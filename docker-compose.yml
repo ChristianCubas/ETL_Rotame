@@ -1,0 +1,57 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en el archivo .env}
+      MSSQL_PID: "Express"
+    ports:
+      # 1435 en el host para no chocar con un SQL Server local (1433)
+      - "1435:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      # sqlcmd esta en mssql-tools18 (imagenes 2022 recientes) o mssql-tools (antiguas)
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - etl_network
+
+  etl:
+    build:
+      context: .
+      dockerfile: etl/Dockerfile
+    image: etl_clinica_pacifico:latest
+    container_name: python_etl
+    restart: "no"
+    environment:
+      SQLSERVER_HOST: sqlserver
+      SQLSERVER_PORT: "1433"          # puerto interno de la red de Docker
+      SQLSERVER_USER: ${SQLSERVER_USER:-sa}
+      SQLSERVER_PASSWORD: ${MSSQL_SA_PASSWORD:?Define MSSQL_SA_PASSWORD en el archivo .env}
+      SQLSERVER_DATABASE: ${SQLSERVER_DATABASE:-clinica_pacifico}
+      SQL_DRIVER: ${SQL_DRIVER:-ODBC Driver 18 for SQL Server}
+      BATCH_SIZE: ${BATCH_SIZE:-5000}
+      FORCE_RELOAD: ${FORCE_RELOAD:-0}
+      ANIOS_HISTORICO: ${ANIOS_HISTORICO:-3}
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      # Solo datos de entrada: el ETL escribe en SQL Server, no en disco
+      - ./datos_clinica:/app/datos_clinica:ro
+      - ./estructura:/app/estructura:ro
+    networks:
+      - etl_network
+
+networks:
+  etl_network:
+    driver: bridge
+
+volumes:
+  sqlserver_data:

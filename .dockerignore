@@ -1,0 +1,13 @@
+# Los datos y el esquema se montan como volúmenes (ver docker-compose.yml):
+# no hace falta enviarlos al contexto de build.
+datos_clinica/
+datos_limpios/
+datawarehouse/
+
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.venv/
+README_DEPLOY.md
+.env
